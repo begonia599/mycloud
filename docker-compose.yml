@@ -18,7 +18,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "${PORT:-80}:8080"
+      - "127.0.0.1:${PORT:-8090}:8080"
     volumes:
       - file_storage:/app/uploads
     environment:
