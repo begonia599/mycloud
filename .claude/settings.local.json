@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx shadcn@latest mcp init:*)",
+      "Bash(dir:*)",
+      "Bash(go mod tidy)",
+      "Bash(npm create:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npm run build)",
+      "Bash(go build:*)",
+      "Bash(docker compose up:*)",
+      "Bash(timeout:*)",
+      "Bash(docker compose down:*)",
+      "Bash(docker compose:*)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "shadcn"
+  ]
+}

@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: clouddisk
+      POSTGRES_USER: clouddisk
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clouddisk"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:8080"
+    volumes:
+      - file_storage:/app/uploads
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=clouddisk
+      - DB_USER=clouddisk
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_USER=${ADMIN_USER}
+      - ADMIN_PASS=${ADMIN_PASS}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  file_storage:
