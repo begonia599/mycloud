@@ -103,6 +103,7 @@ export const chunkedUploadApi = {
 };
 
 const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
+const CONCURRENCY = 3; // parallel chunk uploads
 
 export async function uploadFileInChunks(
   file: File,
@@ -131,10 +132,10 @@ export async function uploadFileInChunks(
     uploadedSet = new Set<number>();
   }
 
-  // Upload missing chunks sequentially
-  let uploadedBytes = 0;
+  // Speed tracking state
+  let confirmedBytes = 0;
+  const chunkInFlightLoaded = new Map<number, number>(); // chunk index → loaded bytes so far
   const startTime = Date.now();
-  // For smoothed speed calculation
   let lastSpeedUpdateTime = startTime;
   let lastSpeedUpdateBytes = 0;
   let smoothedSpeed = 0;
@@ -143,55 +144,77 @@ export async function uploadFileInChunks(
   for (const idx of uploadedSet) {
     const s = idx * chunkSize;
     const e = Math.min(s + chunkSize, file.size);
-    uploadedBytes += e - s;
+    confirmedBytes += e - s;
   }
-  lastSpeedUpdateBytes = uploadedBytes;
+  lastSpeedUpdateBytes = confirmedBytes;
 
-  for (let i = 0; i < totalChunks; i++) {
-    if (signal?.aborted) throw new DOMException('Upload aborted', 'AbortError');
-    if (uploadedSet.has(i)) continue;
-
-    const start = i * chunkSize;
-    const end = Math.min(start + chunkSize, file.size);
-    const chunk = file.slice(start, end);
-    const chunkBytes = end - start;
-
-    await chunkedUploadApi.uploadChunk(uploadId, i, chunk, (_loaded, _total) => {
-      const currentBytes = uploadedBytes + (_loaded / _total) * chunkBytes;
-      const now = Date.now();
-      const elapsed = (now - lastSpeedUpdateTime) / 1000;
-      if (elapsed >= 0.5) {
-        smoothedSpeed = (currentBytes - lastSpeedUpdateBytes) / elapsed;
-        lastSpeedUpdateTime = now;
-        lastSpeedUpdateBytes = currentBytes;
-      }
-      const percent = Math.round((currentBytes / file.size) * 100);
-      onProgress?.({
-        phase: 'uploading',
-        percent: Math.min(percent, 99),
-        uploadedChunks: uploadedSet.size,
-        totalChunks,
-        speed: smoothedSpeed,
-      });
-    });
-
-    uploadedBytes += chunkBytes;
-    uploadedSet.add(i);
+  const emitProgress = () => {
+    let inFlightBytes = 0;
+    for (const loaded of chunkInFlightLoaded.values()) {
+      inFlightBytes += loaded;
+    }
+    const currentBytes = confirmedBytes + inFlightBytes;
     const now = Date.now();
     const elapsed = (now - lastSpeedUpdateTime) / 1000;
     if (elapsed >= 0.5) {
-      smoothedSpeed = (uploadedBytes - lastSpeedUpdateBytes) / elapsed;
+      smoothedSpeed = (currentBytes - lastSpeedUpdateBytes) / elapsed;
       lastSpeedUpdateTime = now;
-      lastSpeedUpdateBytes = uploadedBytes;
+      lastSpeedUpdateBytes = currentBytes;
     }
+    const percent = Math.round((currentBytes / file.size) * 100);
     onProgress?.({
       phase: 'uploading',
-      percent: Math.min(Math.round((uploadedBytes / file.size) * 100), 99),
+      percent: Math.min(percent, 99),
       uploadedChunks: uploadedSet.size,
       totalChunks,
       speed: smoothedSpeed,
     });
+  };
+
+  // Build list of chunks that need uploading
+  const pending: number[] = [];
+  for (let i = 0; i < totalChunks; i++) {
+    if (!uploadedSet.has(i)) pending.push(i);
   }
+
+  // Upload with concurrency pool
+  let nextIdx = 0;
+  let firstError: Error | null = null;
+
+  const uploadWorker = async () => {
+    while (nextIdx < pending.length && !firstError) {
+      if (signal?.aborted) throw new DOMException('Upload aborted', 'AbortError');
+
+      const workerIdx = nextIdx++;
+      const i = pending[workerIdx];
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunk = file.slice(start, end);
+      const chunkBytes = end - start;
+
+      chunkInFlightLoaded.set(i, 0);
+
+      try {
+        await chunkedUploadApi.uploadChunk(uploadId, i, chunk, (loaded, _total) => {
+          chunkInFlightLoaded.set(i, loaded);
+          emitProgress();
+        });
+      } catch (err) {
+        chunkInFlightLoaded.delete(i);
+        firstError = err instanceof Error ? err : new Error(String(err));
+        throw firstError;
+      }
+
+      // Chunk done: move from in-flight to confirmed
+      chunkInFlightLoaded.delete(i);
+      confirmedBytes += chunkBytes;
+      uploadedSet.add(i);
+      emitProgress();
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(CONCURRENCY, pending.length) }, () => uploadWorker());
+  await Promise.all(workers);
 
   // Merge phase
   onProgress?.({ phase: 'merging', percent: 99, uploadedChunks: totalChunks, totalChunks, speed: 0 });
