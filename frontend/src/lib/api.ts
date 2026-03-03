@@ -241,8 +241,10 @@ export const publicApi = {
     ),
   verify: (code: string, password: string) =>
     api.post<{ files: FileItem[] }>(`/s/${code}/verify`, { password }),
-  downloadUrl: (code: string, fileId: string, pwd?: string) =>
-    `/api/s/${code}/download/${fileId}${pwd ? `?pwd=${encodeURIComponent(pwd)}` : ''}`,
+  getDownloadToken: (code: string, password: string) =>
+    api.post<{ token: string }>(`/s/${code}/download-token`, { password }),
+  downloadUrl: (code: string, fileId: string, token?: string) =>
+    `/api/s/${code}/download/${fileId}${token ? `?token=${encodeURIComponent(token)}` : ''}`,
 };
 
 export default api;

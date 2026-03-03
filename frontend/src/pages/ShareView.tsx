@@ -56,10 +56,20 @@ export default function ShareView() {
     }
   };
 
-  const handleDownload = (fileId: string) => {
+  const handleDownload = async (fileId: string) => {
     if (!code) return;
-    const url = publicApi.downloadUrl(code, fileId, needPassword ? password : undefined);
-    window.open(url, '_blank');
+    try {
+      if (needPassword) {
+        const res = await publicApi.getDownloadToken(code, password);
+        const url = publicApi.downloadUrl(code, fileId, res.data.token);
+        window.open(url, '_blank');
+      } else {
+        const url = publicApi.downloadUrl(code, fileId);
+        window.open(url, '_blank');
+      }
+    } catch {
+      setError('获取下载链接失败');
+    }
   };
 
   const formatSize = (bytes: number) => {

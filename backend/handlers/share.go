@@ -4,8 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"clouddisk/config"
@@ -13,6 +15,7 @@ import (
 	"clouddisk/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -28,10 +31,22 @@ type CreateShareRequest struct {
 }
 
 func generateCode() string {
-	b := make([]byte, 4)
+	b := make([]byte, 8)
 	rand.Read(b)
 	return hex.EncodeToString(b)
 }
+
+// --- Download token store ---
+
+type downloadToken struct {
+	ShareCode string
+	ExpiresAt time.Time
+}
+
+var (
+	downloadTokens   = make(map[string]downloadToken)
+	downloadTokensMu sync.Mutex
+)
 
 func (h *ShareHandler) Create(c *gin.Context) {
 	var req CreateShareRequest
@@ -74,13 +89,13 @@ func (h *ShareHandler) Create(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"share": gin.H{
-			"id":         share.ID,
-			"code":       share.Code,
-			"title":      share.Title,
+			"id":           share.ID,
+			"code":         share.Code,
+			"title":        share.Title,
 			"has_password": share.Password != "",
-			"expires_at": share.ExpiresAt,
-			"created_at": share.CreatedAt,
-			"files":      share.Files,
+			"expires_at":   share.ExpiresAt,
+			"created_at":   share.CreatedAt,
+			"files":        share.Files,
 		},
 	})
 }
@@ -186,6 +201,47 @@ func (h *ShareHandler) VerifyShare(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"files": share.Files})
 }
 
+// IssueDownloadToken verifies the password and returns a one-time download token.
+func (h *ShareHandler) IssueDownloadToken(c *gin.Context) {
+	code := c.Param("code")
+
+	var req VerifyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password required"})
+		return
+	}
+
+	var share models.Share
+	if err := database.DB.Where("code = ?", code).First(&share).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "share not found"})
+		return
+	}
+
+	if share.ExpiresAt != nil && share.ExpiresAt.Before(time.Now()) {
+		c.JSON(http.StatusGone, gin.H{"error": "share has expired"})
+		return
+	}
+
+	if share.Password == "" {
+		// No password needed, return a token anyway for consistency
+	} else {
+		if err := bcrypt.CompareHashAndPassword([]byte(share.Password), []byte(req.Password)); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "wrong password"})
+			return
+		}
+	}
+
+	token := uuid.New().String()
+	downloadTokensMu.Lock()
+	downloadTokens[token] = downloadToken{
+		ShareCode: code,
+		ExpiresAt: time.Now().Add(10 * time.Minute),
+	}
+	downloadTokensMu.Unlock()
+
+	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
 func (h *ShareHandler) Download(c *gin.Context) {
 	code := c.Param("code")
 	fileID := c.Param("fileId")
@@ -201,15 +257,23 @@ func (h *ShareHandler) Download(c *gin.Context) {
 		return
 	}
 
-	// If share has password, verify via query param (simple approach for downloads)
+	// Verify access: either no password, or valid download token
 	if share.Password != "" {
-		pwd := c.Query("pwd")
-		if pwd == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "password required"})
+		tok := c.Query("token")
+		if tok == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
 			return
 		}
-		if err := bcrypt.CompareHashAndPassword([]byte(share.Password), []byte(pwd)); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "wrong password"})
+
+		downloadTokensMu.Lock()
+		dt, exists := downloadTokens[tok]
+		if exists {
+			delete(downloadTokens, tok) // one-time use
+		}
+		downloadTokensMu.Unlock()
+
+		if !exists || dt.ShareCode != code || dt.ExpiresAt.Before(time.Now()) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
 		}
 	}
@@ -233,6 +297,8 @@ func (h *ShareHandler) Download(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Disposition", "attachment; filename=\""+found.Name+"\"")
+	// RFC 5987 encoded Content-Disposition for non-ASCII filenames
+	encodedName := url.PathEscape(found.Name)
+	c.Header("Content-Disposition", "attachment; filename*=UTF-8''"+encodedName)
 	c.File(filePath)
 }

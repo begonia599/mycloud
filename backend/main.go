@@ -24,11 +24,18 @@ func main() {
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		AllowCredentials: true,
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Origin", "Content-Type", "Authorization"},
 	}))
+
+	// Security headers
+	r.Use(func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'")
+		c.Next()
+	})
 
 	// Set max upload size (100MB)
 	r.MaxMultipartMemory = 100 << 20
@@ -44,6 +51,7 @@ func main() {
 		// Public share endpoints
 		api.GET("/s/:code", shareHandler.GetShareInfo)
 		api.POST("/s/:code/verify", shareHandler.VerifyShare)
+		api.POST("/s/:code/download-token", shareHandler.IssueDownloadToken)
 		api.GET("/s/:code/download/:fileId", shareHandler.Download)
 
 		// Protected endpoints

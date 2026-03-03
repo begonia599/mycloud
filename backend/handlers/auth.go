@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"sync"
 	"time"
 
 	"clouddisk/config"
@@ -19,7 +20,53 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+// loginRateLimiter tracks login attempts per IP.
+type loginRateLimiter struct {
+	mu       sync.Mutex
+	attempts map[string][]time.Time
+}
+
+var limiter = &loginRateLimiter{
+	attempts: make(map[string][]time.Time),
+}
+
+const (
+	rateLimitWindow  = 1 * time.Minute
+	rateLimitMaxHits = 5
+)
+
+// allow returns true if the IP is within the rate limit.
+func (l *loginRateLimiter) allow(ip string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-rateLimitWindow)
+
+	// Filter out expired entries
+	valid := l.attempts[ip][:0]
+	for _, t := range l.attempts[ip] {
+		if t.After(cutoff) {
+			valid = append(valid, t)
+		}
+	}
+
+	if len(valid) >= rateLimitMaxHits {
+		l.attempts[ip] = valid
+		return false
+	}
+
+	l.attempts[ip] = append(valid, now)
+	return true
+}
+
 func (h *AuthHandler) Login(c *gin.Context) {
+	ip := c.ClientIP()
+	if !limiter.allow(ip) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many login attempts, try again later"})
+		return
+	}
+
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})

@@ -125,6 +125,13 @@ func (h *FileHandler) InitUpload(c *gin.Context) {
 		req.ChunkSize = 4 * 1024 * 1024 // default 4MB
 	}
 
+	// Reject files larger than 10GB
+	const maxFileSize = 10 * 1024 * 1024 * 1024 // 10GB
+	if req.FileSize > maxFileSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file size exceeds 10GB limit"})
+		return
+	}
+
 	totalChunks := int(req.FileSize / req.ChunkSize)
 	if req.FileSize%req.ChunkSize != 0 {
 		totalChunks++
@@ -217,7 +224,10 @@ func (h *FileHandler) UploadStatus(c *gin.Context) {
 	}
 
 	var meta uploadMeta
-	json.Unmarshal(metaBytes, &meta)
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "corrupted upload metadata"})
+		return
+	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -271,7 +281,10 @@ func (h *FileHandler) CompleteUpload(c *gin.Context) {
 	}
 
 	var meta uploadMeta
-	json.Unmarshal(metaBytes, &meta)
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "corrupted upload metadata"})
+		return
+	}
 
 	// Verify all chunks exist
 	for i := 0; i < meta.TotalChunks; i++ {
