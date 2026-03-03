@@ -103,7 +103,7 @@ export const chunkedUploadApi = {
 };
 
 const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
-const CONCURRENCY = 3; // parallel chunk uploads
+const CONCURRENCY = 1; // sequential uploads — parallel hurts on limited bandwidth
 
 export async function uploadFileInChunks(
   file: File,
