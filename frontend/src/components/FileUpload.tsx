@@ -22,6 +22,14 @@ function formatSize(bytes: number): string {
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec <= 0) return '--';
+  if (bytesPerSec < 1024) return bytesPerSec.toFixed(0) + ' B/s';
+  if (bytesPerSec < 1024 * 1024) return (bytesPerSec / 1024).toFixed(1) + ' KB/s';
+  if (bytesPerSec < 1024 * 1024 * 1024) return (bytesPerSec / (1024 * 1024)).toFixed(1) + ' MB/s';
+  return (bytesPerSec / (1024 * 1024 * 1024)).toFixed(2) + ' GB/s';
+}
+
 export default function FileUpload({ onUploaded }: FileUploadProps) {
   const [tasks, setTasks] = useState<FileTask[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -35,7 +43,7 @@ export default function FileUpload({ onUploaded }: FileUploadProps) {
     async (task: FileTask) => {
       try {
         updateTask(task.id, {
-          progress: { phase: 'uploading', percent: 0, uploadedChunks: 0, totalChunks: 0 },
+          progress: { phase: 'uploading', percent: 0, uploadedChunks: 0, totalChunks: 0, speed: 0 },
         });
         await uploadFileInChunks(
           task.file,
@@ -47,7 +55,7 @@ export default function FileUpload({ onUploaded }: FileUploadProps) {
       } catch (err) {
         const message = err instanceof Error ? err.message : '上传失败';
         updateTask(task.id, {
-          progress: { phase: 'error', percent: 0, uploadedChunks: 0, totalChunks: 0, error: message },
+          progress: { phase: 'error', percent: 0, uploadedChunks: 0, totalChunks: 0, speed: 0, error: message },
         });
       }
     },
@@ -60,7 +68,7 @@ export default function FileUpload({ onUploaded }: FileUploadProps) {
       const newTasks: FileTask[] = Array.from(fileList).map((file) => ({
         id: crypto.randomUUID(),
         file,
-        progress: { phase: 'uploading' as const, percent: 0, uploadedChunks: 0, totalChunks: 0 },
+        progress: { phase: 'uploading' as const, percent: 0, uploadedChunks: 0, totalChunks: 0, speed: 0 },
       }));
       setTasks((prev) => [...newTasks, ...prev]);
       newTasks.forEach((task) => startUpload(task));
@@ -170,6 +178,8 @@ export default function FileUpload({ onUploaded }: FileUploadProps) {
                       {task.progress.phase === 'uploading' &&
                         task.progress.totalChunks > 1 &&
                         ` (${task.progress.uploadedChunks}/${task.progress.totalChunks} 分片)`}
+                      {task.progress.phase === 'uploading' &&
+                        ` · ${formatSpeed(task.progress.speed)}`}
                     </div>
                   </div>
                 )}

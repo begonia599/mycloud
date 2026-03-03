@@ -63,6 +63,7 @@ export interface UploadProgress {
   percent: number; // 0-100
   uploadedChunks: number;
   totalChunks: number;
+  speed: number; // bytes per second
   error?: string;
 }
 
@@ -131,6 +132,21 @@ export async function uploadFileInChunks(
   }
 
   // Upload missing chunks sequentially
+  let uploadedBytes = 0;
+  const startTime = Date.now();
+  // For smoothed speed calculation
+  let lastSpeedUpdateTime = startTime;
+  let lastSpeedUpdateBytes = 0;
+  let smoothedSpeed = 0;
+
+  // Pre-calculate already uploaded bytes for resume
+  for (const idx of uploadedSet) {
+    const s = idx * chunkSize;
+    const e = Math.min(s + chunkSize, file.size);
+    uploadedBytes += e - s;
+  }
+  lastSpeedUpdateBytes = uploadedBytes;
+
   for (let i = 0; i < totalChunks; i++) {
     if (signal?.aborted) throw new DOMException('Upload aborted', 'AbortError');
     if (uploadedSet.has(i)) continue;
@@ -138,34 +154,49 @@ export async function uploadFileInChunks(
     const start = i * chunkSize;
     const end = Math.min(start + chunkSize, file.size);
     const chunk = file.slice(start, end);
+    const chunkBytes = end - start;
 
     await chunkedUploadApi.uploadChunk(uploadId, i, chunk, (_loaded, _total) => {
-      // Calculate overall progress: completed chunks + fraction of current chunk
-      const completedChunks = [...uploadedSet].filter((idx) => idx < i).length + i - [...uploadedSet].filter((idx) => idx < i).length;
-      const chunkFraction = _loaded / _total;
-      const percent = Math.round(((completedChunks + chunkFraction) / totalChunks) * 100);
+      const currentBytes = uploadedBytes + (_loaded / _total) * chunkBytes;
+      const now = Date.now();
+      const elapsed = (now - lastSpeedUpdateTime) / 1000;
+      if (elapsed >= 0.5) {
+        smoothedSpeed = (currentBytes - lastSpeedUpdateBytes) / elapsed;
+        lastSpeedUpdateTime = now;
+        lastSpeedUpdateBytes = currentBytes;
+      }
+      const percent = Math.round((currentBytes / file.size) * 100);
       onProgress?.({
         phase: 'uploading',
         percent: Math.min(percent, 99),
-        uploadedChunks: completedChunks,
+        uploadedChunks: uploadedSet.size,
         totalChunks,
+        speed: smoothedSpeed,
       });
     });
 
+    uploadedBytes += chunkBytes;
     uploadedSet.add(i);
-    const doneCount = uploadedSet.size;
+    const now = Date.now();
+    const elapsed = (now - lastSpeedUpdateTime) / 1000;
+    if (elapsed >= 0.5) {
+      smoothedSpeed = (uploadedBytes - lastSpeedUpdateBytes) / elapsed;
+      lastSpeedUpdateTime = now;
+      lastSpeedUpdateBytes = uploadedBytes;
+    }
     onProgress?.({
       phase: 'uploading',
-      percent: Math.min(Math.round((doneCount / totalChunks) * 100), 99),
-      uploadedChunks: doneCount,
+      percent: Math.min(Math.round((uploadedBytes / file.size) * 100), 99),
+      uploadedChunks: uploadedSet.size,
       totalChunks,
+      speed: smoothedSpeed,
     });
   }
 
   // Merge phase
-  onProgress?.({ phase: 'merging', percent: 99, uploadedChunks: totalChunks, totalChunks });
+  onProgress?.({ phase: 'merging', percent: 99, uploadedChunks: totalChunks, totalChunks, speed: 0 });
   const { data: result } = await chunkedUploadApi.complete(uploadId);
-  onProgress?.({ phase: 'done', percent: 100, uploadedChunks: totalChunks, totalChunks });
+  onProgress?.({ phase: 'done', percent: 100, uploadedChunks: totalChunks, totalChunks, speed: 0 });
   return result.file;
 }
 
