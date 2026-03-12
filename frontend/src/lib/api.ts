@@ -12,14 +12,71 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// 标记是否正在刷新 token，防止并发刷新
+let isRefreshing = false;
+let pendingRequests: Array<(token: string) => void> = [];
+
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.response?.status === 401 && window.location.pathname !== '/login') {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+  async (err) => {
+    const originalRequest = err.config;
+
+    // 非 401、在登录页、或已重试过 → 直接失败
+    if (
+      err.response?.status !== 401 ||
+      window.location.pathname === '/login' ||
+      originalRequest._retry
+    ) {
+      return Promise.reject(err);
     }
-    return Promise.reject(err);
+
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('refresh_token');
+      window.location.href = '/login';
+      return Promise.reject(err);
+    }
+
+    // 已经在刷新中 → 排队等新 token
+    if (isRefreshing) {
+      return new Promise((resolve) => {
+        pendingRequests.push((newToken: string) => {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          resolve(api(originalRequest));
+        });
+      });
+    }
+
+    // 开始刷新
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    try {
+      const { data } = await axios.post('/api/auth/refresh', {
+        refresh_token: refreshToken,
+      });
+      const newToken = data.token;
+      localStorage.setItem('token', newToken);
+      if (data.refresh_token) {
+        localStorage.setItem('refresh_token', data.refresh_token);
+      }
+
+      // 释放排队的请求
+      pendingRequests.forEach((cb) => cb(newToken));
+      pendingRequests = [];
+
+      originalRequest.headers.Authorization = `Bearer ${newToken}`;
+      return api(originalRequest);
+    } catch {
+      // refresh 也失败 → 跳登录
+      localStorage.removeItem('token');
+      localStorage.removeItem('refresh_token');
+      window.location.href = '/login';
+      return Promise.reject(err);
+    } finally {
+      isRefreshing = false;
+    }
   }
 );
 
@@ -44,7 +101,10 @@ export interface ShareItem {
 
 export const authApi = {
   login: (username: string, password: string) =>
-    api.post<{ token: string }>('/auth/login', { username, password }),
+    api.post<{ token: string; refresh_token: string; expires_in: number }>(
+      '/auth/login',
+      { username, password }
+    ),
 };
 
 export const fileApi = {

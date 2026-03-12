@@ -6,15 +6,18 @@ import (
 )
 
 type Config struct {
+	// Database (网盘业务表：shares, files 等)
 	DBHost    string
 	DBPort    string
 	DBUser    string
 	DBPass    string
 	DBName    string
 	DBSSLMode string
-	JWTSecret string
-	AdminUser string
-	AdminPass string
+
+	// 统一后端地址
+	PlatformURL string
+
+	// 本地文件存储目录
 	UploadDir string
 }
 
@@ -24,27 +27,17 @@ func Load() *Config {
 		log.Fatal("DB_PASSWORD environment variable is required")
 	}
 
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
-	}
-
-	adminPass := getEnv("ADMIN_PASS", "admin123")
-	if adminPass == "admin123" {
-		log.Println("WARNING: using default ADMIN_PASS — change it in production!")
-	}
+	platformURL := getEnv("PLATFORM_URL", "http://localhost:8080")
 
 	return &Config{
-		DBHost:    getEnv("DB_HOST", "localhost"),
-		DBPort:    getEnv("DB_PORT", "5432"),
-		DBUser:    getEnv("DB_USER", "clouddisk"),
-		DBPass:    dbPass,
-		DBName:    getEnv("DB_NAME", "clouddisk"),
-		DBSSLMode: getEnv("DB_SSLMODE", "disable"),
-		JWTSecret: jwtSecret,
-		AdminUser: getEnv("ADMIN_USER", "admin"),
-		AdminPass: adminPass,
-		UploadDir: getEnv("UPLOAD_DIR", "./uploads"),
+		DBHost:      getEnv("DB_HOST", "localhost"),
+		DBPort:      getEnv("DB_PORT", "5432"),
+		DBUser:      getEnv("DB_USER", "clouddisk"),
+		DBPass:      dbPass,
+		DBName:      getEnv("DB_NAME", "clouddisk"),
+		DBSSLMode:   getEnv("DB_SSLMODE", "disable"),
+		PlatformURL: platformURL,
+		UploadDir:   getEnv("UPLOAD_DIR", "./uploads"),
 	}
 }
 

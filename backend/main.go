@@ -13,6 +13,7 @@ import (
 	"clouddisk/handlers"
 	"clouddisk/middleware"
 
+	"github.com/begonia599/myplatform/sdk"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -20,6 +21,14 @@ import (
 func main() {
 	cfg := config.Load()
 	database.Init(cfg)
+
+	// 初始化统一后端 SDK 客户端
+	platform := sdk.New(&sdk.Config{
+		BaseURL: cfg.PlatformURL,
+	})
+
+	// 注册网盘权限到核心平台
+	registerCloudPermissions(platform)
 
 	r := gin.Default()
 
@@ -40,35 +49,39 @@ func main() {
 	// Set max upload size (100MB)
 	r.MaxMultipartMemory = 100 << 20
 
-	authHandler := &handlers.AuthHandler{Config: cfg}
+	authHandler := &handlers.AuthHandler{Platform: platform}
 	fileHandler := &handlers.FileHandler{Config: cfg}
 	shareHandler := &handlers.ShareHandler{Config: cfg}
 
 	api := r.Group("/api")
 	{
+		// Auth 代理端点（转发到统一后端）
 		api.POST("/auth/login", authHandler.Login)
+		api.POST("/auth/refresh", authHandler.Refresh)
 
-		// Public share endpoints
+		// 公开分享端点
 		api.GET("/s/:code", shareHandler.GetShareInfo)
 		api.POST("/s/:code/verify", shareHandler.VerifyShare)
 		api.POST("/s/:code/download-token", shareHandler.IssueDownloadToken)
 		api.GET("/s/:code/download/:fileId", shareHandler.Download)
 
-		// Protected endpoints
-		admin := api.Group("")
-		admin.Use(middleware.AuthRequired(cfg))
+		// 需要认证的端点（通过 SDK 验证）
+		auth := api.Group("")
+		auth.Use(middleware.AuthRequired(platform))
 		{
-			admin.POST("/files/upload", fileHandler.Upload)
-			admin.POST("/files/upload/init", fileHandler.InitUpload)
-			admin.POST("/files/upload/chunk", fileHandler.UploadChunk)
-			admin.GET("/files/upload/status", fileHandler.UploadStatus)
-			admin.POST("/files/upload/complete", fileHandler.CompleteUpload)
-			admin.GET("/files", fileHandler.List)
-			admin.DELETE("/files/:id", fileHandler.Delete)
+			// 文件操作
+			auth.POST("/files/upload", middleware.RequirePermission(platform, "cloud.file", "upload"), fileHandler.Upload)
+			auth.POST("/files/upload/init", middleware.RequirePermission(platform, "cloud.file", "upload"), fileHandler.InitUpload)
+			auth.POST("/files/upload/chunk", middleware.RequirePermission(platform, "cloud.file", "upload"), fileHandler.UploadChunk)
+			auth.GET("/files/upload/status", middleware.RequirePermission(platform, "cloud.file", "read"), fileHandler.UploadStatus)
+			auth.POST("/files/upload/complete", middleware.RequirePermission(platform, "cloud.file", "upload"), fileHandler.CompleteUpload)
+			auth.GET("/files", middleware.RequirePermission(platform, "cloud.file", "read"), fileHandler.List)
+			auth.DELETE("/files/:id", middleware.RequirePermission(platform, "cloud.file", "delete"), fileHandler.Delete)
 
-			admin.POST("/shares", shareHandler.Create)
-			admin.GET("/shares", shareHandler.List)
-			admin.DELETE("/shares/:id", shareHandler.Delete)
+			// 分享管理
+			auth.POST("/shares", middleware.RequirePermission(platform, "cloud.share", "create"), shareHandler.Create)
+			auth.GET("/shares", middleware.RequirePermission(platform, "cloud.share", "read"), shareHandler.List)
+			auth.DELETE("/shares/:id", middleware.RequirePermission(platform, "cloud.share", "delete"), shareHandler.Delete)
 		}
 	}
 
@@ -119,5 +132,17 @@ func main() {
 	log.Println("Server starting on :8080")
 	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("Server failed: %v", err)
+	}
+}
+
+func registerCloudPermissions(platform *sdk.Client) {
+	err := platform.Permission.RegisterPermissions("cloud", []sdk.ResourceDef{
+		{Resource: "cloud.file", Actions: []string{"upload", "read", "delete"}},
+		{Resource: "cloud.share", Actions: []string{"create", "read", "delete"}},
+	})
+	if err != nil {
+		log.Printf("Warning: failed to register cloud permissions: %v", err)
+	} else {
+		log.Println("Cloud permissions registered with platform")
 	}
 }

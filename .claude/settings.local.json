@@ -14,9 +14,17 @@
       "Bash(docker compose up:*)",
       "Bash(timeout:*)",
       "Bash(docker compose down:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(go vet:*)",
+      "Bash(docker info:*)",
+      "Bash(docker context:*)",
+      "Bash(__NEW_LINE_07a77235d7855dcd__ echo:*)",
+      "Bash(curl:*)",
+      "Bash(grep:*)",
+      "Bash(git:*)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "shadcn"
   ]

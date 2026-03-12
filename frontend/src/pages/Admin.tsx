@@ -46,6 +46,7 @@ export default function Admin() {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
     navigate('/login');
   };
 

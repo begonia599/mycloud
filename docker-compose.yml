@@ -27,13 +27,18 @@ services:
       - DB_NAME=clouddisk
       - DB_USER=clouddisk
       - DB_PASSWORD=${DB_PASSWORD}
-      - JWT_SECRET=${JWT_SECRET}
-      - ADMIN_USER=${ADMIN_USER}
-      - ADMIN_PASS=${ADMIN_PASS}
+      - PLATFORM_URL=http://app:8080
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - default
+      - myplatform_default
 
 volumes:
   pg_data:
   file_storage:
+
+networks:
+  myplatform_default:
+    external: true
