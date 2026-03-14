@@ -64,7 +64,7 @@ export default function Admin() {
     <div className="min-h-screen bg-muted/40">
       <header className="border-b bg-background">
         <div className="container mx-auto flex items-center justify-between h-14 px-4">
-          <h1 className="text-lg font-semibold">云盘管理</h1>
+          <h1 className="text-lg font-semibold">Begonia Cloud</h1>
           <Button variant="ghost" size="sm" onClick={handleLogout}>
             <LogOut className="size-4 mr-1" /> 退出登录
           </Button>

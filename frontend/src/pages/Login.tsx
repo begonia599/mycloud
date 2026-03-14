@@ -21,7 +21,7 @@ export default function Login() {
       const res = await authApi.login(username, password);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('refresh_token', res.data.refresh_token);
-      navigate('/admin');
+      navigate('/');
     } catch {
       setError('用户名或密码错误');
     } finally {
