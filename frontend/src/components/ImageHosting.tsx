@@ -19,7 +19,8 @@ export default function ImageHosting() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [platformUrl, setPlatformUrl] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadImages = useCallback(async () => {
@@ -36,7 +37,13 @@ export default function ImageHosting() {
 
   useEffect(() => {
     loadImages();
+    imageApi.getPlatformUrl().then(setPlatformUrl);
   }, [loadImages]);
+
+  const getPublicUrl = (img: ImageItem) => {
+    if (!platformUrl) return '';
+    return imageApi.publicUrl(platformUrl, img.id);
+  };
 
   const handleUpload = async (fileList: FileList | File[]) => {
     const files = Array.from(fileList).filter((f) =>
@@ -55,14 +62,14 @@ export default function ImageHosting() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (!confirm('确定删除此图片？')) return;
     await imageApi.delete(id);
     loadImages();
   };
 
   const handleToggleVisibility = async (
-    id: string,
+    id: number,
     currentPublic: boolean
   ) => {
     await imageApi.toggleVisibility(id, !currentPublic);
@@ -70,15 +77,15 @@ export default function ImageHosting() {
   };
 
   const copyMarkdownLink = (image: ImageItem) => {
-    const url = `${window.location.origin}${imageApi.publicUrl(image.id)}`;
-    const markdown = `![${image.name}](${url})`;
+    const url = getPublicUrl(image);
+    const markdown = `![${image.original_name}](${url})`;
     navigator.clipboard.writeText(markdown);
     setCopiedId(image.id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
   const copyDirectLink = (image: ImageItem) => {
-    const url = `${window.location.origin}${imageApi.publicUrl(image.id)}`;
+    const url = getPublicUrl(image);
     navigator.clipboard.writeText(url);
     setCopiedId(image.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -155,8 +162,8 @@ export default function ImageHosting() {
             <Card key={img.id} className="overflow-hidden">
               <div className="aspect-video bg-muted relative overflow-hidden">
                 <img
-                  src={imageApi.publicUrl(img.id)}
-                  alt={img.name}
+                  src={getPublicUrl(img)}
+                  alt={img.original_name}
                   className="w-full h-full object-cover"
                   loading="lazy"
                 />
@@ -169,9 +176,9 @@ export default function ImageHosting() {
               <CardContent className="p-3 space-y-2">
                 <p
                   className="text-sm font-medium truncate"
-                  title={img.name}
+                  title={img.original_name}
                 >
-                  {img.name}
+                  {img.original_name}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatSize(img.size)} · {formatDate(img.created_at)}

@@ -284,30 +284,48 @@ export async function uploadFileInChunks(
 }
 
 export interface ImageItem {
-  id: string;
-  user_id: number;
-  name: string;
-  stored_name: string;
+  id: number;
+  filename: string;
+  original_name: string;
   size: number;
   mime_type: string;
+  storage_path: string;
+  uploader_id: number;
   is_public: boolean;
   created_at: string;
-  url: string;
+  updated_at: string;
 }
+
+let _platformUrl: string | null = null;
 
 export const imageApi = {
   upload: (files: File[]) => {
-    const form = new FormData();
-    files.forEach((f) => form.append('images', f));
-    return api.post<{ images: ImageItem[] }>('/images/upload', form);
+    // Upload one at a time since myplatform accepts single file
+    const uploads = files.map((f) => {
+      const form = new FormData();
+      form.append('images', f);
+      return api.post<{ images: ImageItem[] }>('/images/upload', form);
+    });
+    return Promise.all(uploads).then((results) => ({
+      data: { images: results.flatMap((r) => r.data.images) },
+    }));
   },
-  list: () => api.get<{ images: ImageItem[] }>('/images'),
-  delete: (id: string) => api.delete(`/images/${id}`),
-  toggleVisibility: (id: string, isPublic: boolean) =>
+  list: () => api.get<{ images: ImageItem[]; total: number }>('/images'),
+  delete: (id: number) => api.delete(`/images/${id}`),
+  toggleVisibility: (id: number, isPublic: boolean) =>
     api.patch<{ image: ImageItem }>(`/images/${id}/visibility`, {
       is_public: isPublic,
     }),
-  publicUrl: (id: string) => `/api/i/${id}`,
+  getPlatformUrl: async (): Promise<string> => {
+    if (_platformUrl) return _platformUrl;
+    const res = await api.get<{ platform_url: string }>(
+      '/images/platform-url'
+    );
+    _platformUrl = res.data.platform_url;
+    return _platformUrl;
+  },
+  publicUrl: (platformUrl: string, id: number) =>
+    `${platformUrl}/api/imagebed/${id}`,
 };
 
 export const shareApi = {
