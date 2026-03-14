@@ -283,6 +283,33 @@ export async function uploadFileInChunks(
   return result.file;
 }
 
+export interface ImageItem {
+  id: string;
+  user_id: number;
+  name: string;
+  stored_name: string;
+  size: number;
+  mime_type: string;
+  is_public: boolean;
+  created_at: string;
+  url: string;
+}
+
+export const imageApi = {
+  upload: (files: File[]) => {
+    const form = new FormData();
+    files.forEach((f) => form.append('images', f));
+    return api.post<{ images: ImageItem[] }>('/images/upload', form);
+  },
+  list: () => api.get<{ images: ImageItem[] }>('/images'),
+  delete: (id: string) => api.delete(`/images/${id}`),
+  toggleVisibility: (id: string, isPublic: boolean) =>
+    api.patch<{ image: ImageItem }>(`/images/${id}/visibility`, {
+      is_public: isPublic,
+    }),
+  publicUrl: (id: string) => `/api/i/${id}`,
+};
+
 export const shareApi = {
   create: (data: {
     title?: string;

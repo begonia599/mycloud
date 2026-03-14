@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import FileUpload from '@/components/FileUpload';
 import FileList from '@/components/FileList';
 import ShareDialog from '@/components/ShareDialog';
+import ImageHosting from '@/components/ImageHosting';
 import type { FileItem, ShareItem } from '@/lib/api';
 import { shareApi } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,6 +76,7 @@ export default function Admin() {
           <TabsList>
             <TabsTrigger value="files">文件管理</TabsTrigger>
             <TabsTrigger value="shares">分享管理</TabsTrigger>
+            <TabsTrigger value="images">图床</TabsTrigger>
           </TabsList>
 
           <TabsContent value="files" className="space-y-4 mt-4">
@@ -144,6 +146,10 @@ export default function Admin() {
                 </Card>
               ))
             )}
+          </TabsContent>
+
+          <TabsContent value="images" className="mt-4">
+            <ImageHosting />
           </TabsContent>
         </Tabs>
       </main>

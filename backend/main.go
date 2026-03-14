@@ -52,6 +52,7 @@ func main() {
 	authHandler := &handlers.AuthHandler{Platform: platform}
 	fileHandler := &handlers.FileHandler{Config: cfg}
 	shareHandler := &handlers.ShareHandler{Config: cfg}
+	imageHandler := &handlers.ImageHandler{Config: cfg, Platform: platform}
 
 	api := r.Group("/api")
 	{
@@ -64,6 +65,9 @@ func main() {
 		api.POST("/s/:code/verify", shareHandler.VerifyShare)
 		api.POST("/s/:code/download-token", shareHandler.IssueDownloadToken)
 		api.GET("/s/:code/download/:fileId", shareHandler.Download)
+
+		// 图床公开访问（条件认证在 handler 内处理）
+		api.GET("/i/:id", imageHandler.Serve)
 
 		// 需要认证的端点（通过 SDK 验证）
 		auth := api.Group("")
@@ -82,6 +86,12 @@ func main() {
 			auth.POST("/shares", middleware.RequirePermission(platform, "cloud.share", "create"), shareHandler.Create)
 			auth.GET("/shares", middleware.RequirePermission(platform, "cloud.share", "read"), shareHandler.List)
 			auth.DELETE("/shares/:id", middleware.RequirePermission(platform, "cloud.share", "delete"), shareHandler.Delete)
+
+			// 图床管理
+			auth.POST("/images/upload", middleware.RequirePermission(platform, "cloud.image", "upload"), imageHandler.Upload)
+			auth.GET("/images", middleware.RequirePermission(platform, "cloud.image", "read"), imageHandler.List)
+			auth.DELETE("/images/:id", middleware.RequirePermission(platform, "cloud.image", "delete"), imageHandler.Delete)
+			auth.PATCH("/images/:id/visibility", middleware.RequirePermission(platform, "cloud.image", "update"), imageHandler.ToggleVisibility)
 		}
 	}
 
@@ -139,6 +149,7 @@ func registerCloudPermissions(platform *sdk.Client) {
 	err := platform.Permission.RegisterPermissions("cloud", []sdk.ResourceDef{
 		{Resource: "cloud.file", Actions: []string{"upload", "read", "delete"}},
 		{Resource: "cloud.share", Actions: []string{"create", "read", "delete"}},
+		{Resource: "cloud.image", Actions: []string{"upload", "read", "delete", "update"}},
 	})
 	if err != nil {
 		log.Printf("Warning: failed to register cloud permissions: %v", err)

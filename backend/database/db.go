@@ -25,7 +25,7 @@ func Init(cfg *config.Config) {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	if err := DB.AutoMigrate(&models.File{}, &models.Share{}, &models.ShareFile{}); err != nil {
+	if err := DB.AutoMigrate(&models.File{}, &models.Share{}, &models.ShareFile{}, &models.Image{}); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
