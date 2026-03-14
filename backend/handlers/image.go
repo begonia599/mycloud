@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"clouddisk/config"
 	"clouddisk/middleware"
 
 	"github.com/begonia599/myplatform/sdk"
@@ -12,6 +13,7 @@ import (
 
 // ImageHandler proxies image operations to the myplatform imagebed service via SDK.
 type ImageHandler struct {
+	Config   *config.Config
 	Platform *sdk.Client
 }
 
@@ -121,7 +123,7 @@ func (h *ImageHandler) ToggleVisibility(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"image": img})
 }
 
-// PlatformURL returns the base URL of the platform for frontend to construct public image URLs
+// PlatformURL returns the public URL of the platform for frontend to construct public image URLs
 func (h *ImageHandler) PlatformURL(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"platform_url": h.Platform.GetBaseURL()})
+	c.JSON(http.StatusOK, gin.H{"platform_url": h.Config.PlatformPublicURL})
 }

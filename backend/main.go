@@ -42,7 +42,7 @@ func main() {
 	r.Use(func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
-		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'")
+	c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: "+cfg.PlatformPublicURL+"; font-src 'self'")
 		c.Next()
 	})
 
@@ -52,7 +52,7 @@ func main() {
 	authHandler := &handlers.AuthHandler{Platform: platform}
 	fileHandler := &handlers.FileHandler{Config: cfg}
 	shareHandler := &handlers.ShareHandler{Config: cfg}
-	imageHandler := &handlers.ImageHandler{Platform: platform}
+	imageHandler := &handlers.ImageHandler{Config: cfg, Platform: platform}
 
 	api := r.Group("/api")
 	{
