@@ -28,6 +28,7 @@ services:
       - DB_USER=clouddisk
       - DB_PASSWORD=${DB_PASSWORD}
       - PLATFORM_URL=http://app:8080
+      - PLATFORM_PUBLIC_URL=https://core.bgnhub.me
     depends_on:
       db:
         condition: service_healthy
